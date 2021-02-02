@@ -1,11 +1,13 @@
 package com.think.patchca;
 
-import com.github.bingoohuang.patchca.custom.ConfigurableCaptchaService;
 import com.think.patchca.exception.PatchcaIncorrectException;
 import com.think.patchca.exception.PatchcaNotFoundException;
 import com.think.patchca.exception.PatchcaRenderException;
 import com.think.patchca.exception.PatchcaTimeoutException;
-import lombok.extern.slf4j.Slf4j;
+import org.patchca.service.Captcha;
+import org.patchca.service.ConfigurableCaptchaService;
+import org.patchca.utils.encoder.AnimatedGifEncoder;
+import org.patchca.utils.encoder.FrameList;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
 
@@ -24,30 +26,76 @@ import static com.think.patchca.Constants.PATCHCA_SESSION_KEY;
  *
  * @author veione
  */
-@Slf4j
 public class DefaultPatchca implements Patchca {
-    private ConfigurableCaptchaService captchaService = new ConfigurableCaptchaService();
+    private final ConfigurableCaptchaService captchaService;
 
     @Autowired
     private HttpServletRequest request;
     @Autowired
     private HttpServletResponse response;
 
+    public DefaultPatchca(ConfigurableCaptchaService captchaService) {
+        this.captchaService = captchaService;
+    }
+
     @Override
     public String render() {
+        Captcha captcha = captchaService.getCaptcha();
+        FrameList frameList = captcha.getFrameList();
+        setHeader(frameList);
+
+        String sessionCode = captcha.getChallenge();
+        try (ServletOutputStream out = response.getOutputStream()) {
+            request.getSession().setAttribute(PATCHCA_SESSION_KEY, sessionCode);
+            request.getSession().setAttribute(PATCHCA_SESSION_DATE, System.currentTimeMillis());
+            writeCaptcha(captcha, frameList, out);
+            return sessionCode;
+        } catch (IOException e) {
+            throw new PatchcaRenderException(e);
+        }
+    }
+
+    /**
+     * 写出验证码
+     *
+     * @param captcha
+     * @param frameList
+     * @param out
+     * @throws IOException
+     */
+    private void writeCaptcha(Captcha captcha, FrameList frameList, ServletOutputStream out) throws IOException {
+        if (frameList != null) {
+            AnimatedGifEncoder encoder = new AnimatedGifEncoder();
+            encoder.setQuality(180);
+            encoder.setDelay(100);
+            encoder.setRepeat(0);
+            encoder.start(out);
+            frameList.forEach(frame -> {
+                encoder.addFrame(frame);
+                frame.flush();
+            });
+            encoder.finish();
+            out.flush();
+            out.close();
+        } else {
+            ImageIO.write(captcha.getImage(), "png", out);
+        }
+    }
+
+    /**
+     * 设置响应头
+     *
+     * @param frameList
+     */
+    private void setHeader(FrameList frameList) {
         response.setDateHeader(HttpHeaders.EXPIRES, 0L);
         response.setHeader(HttpHeaders.CACHE_CONTROL, "no-store, no-cache, must-revalidate");
         response.addHeader(HttpHeaders.CACHE_CONTROL, "post-check=0, pre-check=0");
         response.setHeader(HttpHeaders.PRAGMA, "no-cache");
-        response.setContentType("image/jpeg");
-        String sessionCode = captchaService.getCaptcha().getWord();
-        try (ServletOutputStream out = response.getOutputStream()) {
-            request.getSession().setAttribute(PATCHCA_SESSION_KEY, sessionCode);
-            request.getSession().setAttribute(PATCHCA_SESSION_DATE, System.currentTimeMillis());
-            ImageIO.write(captchaService.getCaptcha().getImage(), "png", out);
-            return sessionCode;
-        } catch (IOException e) {
-            throw new PatchcaRenderException(e);
+        if (frameList != null) {
+            response.setContentType("image/gif");
+        } else {
+            response.setContentType("image/jpeg");
         }
     }
 

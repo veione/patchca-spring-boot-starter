@@ -1,15 +1,20 @@
 package com.think.patchca.spring.boot;
 
-import com.think.patchca.Constants;
 import com.think.patchca.DefaultPatchca;
 import com.think.patchca.Patchca;
+import com.think.patchca.util.ConfigHelper;
+import org.patchca.background.BackgroundFactory;
+import org.patchca.color.ColorFactory;
+import org.patchca.filter.FilterFactory;
+import org.patchca.font.FontFactory;
+import org.patchca.service.ConfigurableCaptchaService;
+import org.patchca.text.renderer.TextRenderer;
+import org.patchca.word.WordFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-
-import java.util.Properties;
 
 /**
  * Patchca 验证码 的springBoot快速启动器
@@ -28,40 +33,32 @@ public class PatchcaAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
-    public DefaultPatchca defaultPatchca() {
-        Properties prop = new Properties();
+    public ConfigurableCaptchaService configurableCaptchaService() {
+        ConfigurableCaptchaService configurable = ConfigHelper.getConfigServivce(properties.getType());
+        /**
+         * 设置宽高
+         */
+        configurable.setWidth(properties.getWidth());
+        configurable.setHeight(properties.getHeight());
+        BackgroundFactory backgroundFactory = ConfigHelper.getBackgroundFactory(properties.getBackgroundColor());
+        WordFactory wordFactory = ConfigHelper.getWordFactory(properties.getContent());
+        FontFactory fontFactory = ConfigHelper.getFontFactory(properties.getFont());
+        ColorFactory colorFactory = ConfigHelper.getColorFactory(properties.getColor());
+        TextRenderer textRenderer = ConfigHelper.getTextRenderer(properties.getMargin(), properties.getType());
+        FilterFactory filterFactory = ConfigHelper.getFilterFactory(properties.getFilter(), colorFactory);
 
-        prop.setProperty(Constants.PATCHCA_IMAGE_WIDTH, String.valueOf(properties.getWidth()));
-        prop.setProperty(Constants.PATCHCA_IMAGE_HEIGHT, String.valueOf(properties.getHeight()));
-
-        PatchcaProperties.Content content = properties.getContent();
-        prop.setProperty(Constants.PATCHCA_TEXTPRODUCER_CHAR_STRING, content.getSource());
-        prop.setProperty(Constants.PATCHCA_TEXTPRODUCER_CHAR_LENGTH, String.valueOf(content.getLength()));
-        prop.setProperty(Constants.PATCHCA_TEXTPRODUCER_CHAR_SPACE, String.valueOf(content.getSpace()));
-
-        PatchcaProperties.BackgroundColor backgroundColor = properties.getBackgroundColor();
-        prop.setProperty(Constants.PATCHCA_BACKGROUND_CLR_FROM, backgroundColor.getFrom());
-        prop.setProperty(Constants.PATCHCA_BACKGROUND_CLR_TO, backgroundColor.getTo());
-
-        PatchcaProperties.Border border = properties.getBorder();
-        prop.setProperty(Constants.PATCHCA_BORDER, border.getEnabled() ? "yes" : "no");
-        prop.setProperty(Constants.PATCHCA_BORDER_COLOR, border.getColor());
-        prop.setProperty(Constants.PATCHCA_BORDER_THICKNESS, String.valueOf(border.getThickness()));
-
-        PatchcaProperties.Font font = properties.getFont();
-        prop.setProperty(Constants.PATCHCA_TEXTPRODUCER_FONT_NAMES, font.getName());
-        prop.setProperty(Constants.PATCHCA_TEXTPRODUCER_FONT_SIZE, String.valueOf(font.getSize()));
-        prop.setProperty(Constants.PATCHCA_TEXTPRODUCER_FONT_COLOR, font.getColor());
-
-        DefaultPatchca defaultPatchca = new DefaultPatchca();
-        //defaultPatchca.setConfig(new Config(prop));
-        return defaultPatchca;
+        configurable.setBackgroundFactory(backgroundFactory);
+        configurable.setWordFactory(wordFactory);
+        configurable.setColorFactory(colorFactory);
+        configurable.setFontFactory(fontFactory);
+        configurable.setTextRenderer(textRenderer);
+        configurable.setFilterFactory(filterFactory);
+        return configurable;
     }
 
     @Bean
     @ConditionalOnMissingBean
-    public Patchca patchcaRender(DefaultPatchca defaultPatchca) {
-        return new DefaultPatchca();
+    public Patchca patchcaRender(ConfigurableCaptchaService cs) {
+        return new DefaultPatchca(cs);
     }
-
 }
